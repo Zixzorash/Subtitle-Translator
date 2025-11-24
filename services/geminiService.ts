@@ -1,13 +1,30 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { Language, OutputFormat } from '../types';
 
-if (!process.env.API_KEY) {
+const getGoogleGenAI = () => {
+  if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable not set");
-}
+  }
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+};
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const generatePrompt = (subtitleContent: string, sourceLanguage: Language, targetLanguage: Language, outputFormat: OutputFormat, customInstructions: string): string => {
+  const customInstructionBlock = customInstructions.trim()
+    ? `\n**Additional User Instructions:**\n${customInstructions.trim()}\n`
+    : '';
+  
+  let thaiInstructions = '';
+  if (targetLanguage === Language.THAI) {
+    thaiInstructions = `
+**Thai Translation Guidelines:**
+- ทำให้เป็นคำบรรยายภาพยนตร์แนวอีโรติก โดยแปลบทสนทนาให้รู้สึกมีชีวิตชีวาเข้าถึงอารมณ์ และ เรียบเรียงบทสนทนาให้ถูกต้อง อนุญาตให้ใช้คำทะลึ่ง,คำแสรง อนุญาตให้ใช้คำที่เกี่ยวกับการมีเซ็กส์ อนุญาตให้มีเสียงร้องครางสื่อถึงอารมณ์ขณะมีเซ็กส์
+- บทสนทนาเร่าร้อน มีชีวิตชีวา ใช้คำทะลึ่ง แสลง และคำเซ็กส์ตรงๆ ได้เต็มที่
+- เสียงครางต่างๆ ใส่ให้สมจริง
+- **Keywords to Emphasize**: หี, ควย, เงี่ยน, น้ำเงี่ยน, เสียวหี, เสียว, น้ำแตก, โม๊ก, โม๊กควย, เลียหี, เย็ด, เม็ดแตด, แตด, ตูด, ควยแข็ง, เย็ดหี, น้ำหีแตก, น้ำควยเยิ้ม, ควยยัดหี, น้ำหีเยิ้ม, หีกระแทกควย
+`;
+  }
 
-const generatePrompt = (subtitleContent: string, sourceLanguage: Language, targetLanguage: Language, outputFormat: OutputFormat): string => {
   return `
 You are a master translator specializing in creating subtitles for high-end erotic films. Your task is to translate the provided subtitle file from ${sourceLanguage} to ${targetLanguage}.
 
@@ -20,7 +37,8 @@ Your translation must adhere to these strict rules:
 4.  **Incorporate Non-verbal Sounds**: Add descriptive sounds of pleasure, moans, heavy breathing, and other sensual vocalizations (e.g., "Ahh...", "Mmmph!", "Oh, god..."). These should be integrated naturally into the dialogue or as separate subtitle entries where appropriate.
 5.  **Hyphen Line Breaks**: If a line of dialogue in the original text ends with a hyphen '-', you must create a line break in the translated output. The text following the hyphen should start on a new line within the same subtitle block.
 6.  **Output Format**: The final output MUST be in valid ${outputFormat.toUpperCase()} (.${outputFormat}) format. If the input is in a different format, convert it while preserving all timing information perfectly. Do not include any other text, explanations, or markdown formatting like \`\`\` before or after the subtitle content. For .txt format, only include the translated dialogue without timestamps or sequence numbers.
-
+${thaiInstructions}
+${customInstructionBlock}
 Translate the following ${sourceLanguage} subtitle content into ${targetLanguage}, following all the rules above.
 
 Original Content:
@@ -34,10 +52,12 @@ export async function* translateSubtitle(
   subtitleContent: string,
   sourceLanguage: Language,
   targetLanguage: Language,
-  outputFormat: OutputFormat
+  outputFormat: OutputFormat,
+  customInstructions: string
 ): AsyncGenerator<string> {
+  const ai = getGoogleGenAI();
   try {
-    const prompt = generatePrompt(subtitleContent, sourceLanguage, targetLanguage, outputFormat);
+    const prompt = generatePrompt(subtitleContent, sourceLanguage, targetLanguage, outputFormat, customInstructions);
     
     const responseStream = await ai.models.generateContentStream({
         model: 'gemini-2.5-pro',
@@ -45,11 +65,19 @@ export async function* translateSubtitle(
     });
 
     for await (const chunk of responseStream) {
-      yield chunk.text;
+      if (chunk.text) {
+          yield chunk.text;
+      }
     }
 
   } catch (error) {
     console.error("Error calling Gemini API:", error);
-    throw new Error("Failed to communicate with the translation service. Please check your API key and try again.");
+
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('PERMISSION_DENIED') || errorMessage.includes('API key not valid') || errorMessage.includes('Requested entity was not found.')) {
+        throw new Error('API key is invalid or permissions are denied. Please check your API key.');
+    }
+
+    throw new Error("Failed to communicate with the translation service. Please try again.");
   }
 };

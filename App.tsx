@@ -9,6 +9,8 @@ import ResultDisplay from './components/ResultDisplay';
 import Loader from './components/Loader';
 import { SparklesIcon } from './components/icons/SparklesIcon';
 import OutputFormatSelector from './components/OutputFormatSelector';
+import AdvancedOptions from './components/AdvancedOptions';
+import { CogIcon } from './components/icons/CogIcon';
 
 const App: React.FC = () => {
   const [sourceLang, setSourceLang] = useState<Language>(Language.ENGLISH);
@@ -19,6 +21,8 @@ const App: React.FC = () => {
   const [translatedContent, setTranslatedContent] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
+  const [customInstructions, setCustomInstructions] = useState<string>('');
 
   const handleFileSelect = (file: File | null) => {
     if (file) {
@@ -57,7 +61,7 @@ const App: React.FC = () => {
     setTranslatedContent('');
 
     try {
-      const stream = translateSubtitle(fileContent, sourceLang, targetLang, outputFormat);
+      const stream = translateSubtitle(fileContent, sourceLang, targetLang, outputFormat, customInstructions);
       for await (const chunk of stream) {
         setTranslatedContent((prev) => prev + chunk);
       }
@@ -66,8 +70,8 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [fileContent, sourceLang, targetLang, outputFormat]);
-
+  }, [fileContent, sourceLang, targetLang, outputFormat, customInstructions]);
+  
   return (
     <div className="min-h-screen bg-gray-900 font-sans p-4 sm:p-6 lg:p-8 flex flex-col items-center">
       <div className="w-full max-w-4xl mx-auto">
@@ -102,6 +106,23 @@ const App: React.FC = () => {
           </div>
 
           <FileInput onFileSelect={handleFileSelect} fileName={fileName} />
+
+          <div className="space-y-4">
+            <button
+                onClick={() => setShowAdvanced(prev => !prev)}
+                className="flex items-center space-x-2 text-sm text-gray-400 hover:text-white transition-colors duration-200"
+                aria-expanded={showAdvanced}
+              >
+                <CogIcon className="w-5 h-5" />
+                <span>Advanced Options</span>
+            </button>
+            {showAdvanced && (
+                <AdvancedOptions
+                    instructions={customInstructions}
+                    onInstructionsChange={setCustomInstructions}
+                />
+            )}
+          </div>
           
           <div className="text-center">
              <button
@@ -122,11 +143,12 @@ const App: React.FC = () => {
 
           {error && <p className="text-center text-red-400 bg-red-900/50 p-3 rounded-lg">{error}</p>}
           
-          {(translatedContent || isLoading) && (
+          {fileContent && (
             <ResultDisplay 
               content={translatedContent} 
               outputFormat={outputFormat}
               originalFileName={fileName}
+              isLoading={isLoading}
             />
           )}
         </main>
